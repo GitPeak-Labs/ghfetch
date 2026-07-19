@@ -1,3 +1,3 @@
 pub mod github;
 
-pub use github::{GitHubLanguage, GitHubStats, InvolvedRepo, MostStarredRepo};
+pub use github::{Collaborator, CollabRepo, GitHubLanguage, GitHubStats, InvolvedRepo, MostStarredRepo};

@@ -6,6 +6,7 @@ A GitHub stats API built with Rust on Cloudflare Workers. Returns aggregated rep
 ## Features
 
 - Aggregates owned, collaborated, and contributed repositories
+- Surfaces top collaborators (shared repos + commit counts) via the GitHub REST contributors API
 - Per-IP and global rate limiting backed by Cloudflare KV
 - Response caching with 5-minute TTL to protect GitHub token limits
 - Runs at the edge with sub-10ms cached response times
@@ -56,6 +57,23 @@ curl "https://ghfetch.carlosranara.workers.dev/v1/stats?username=torvalds"
         "name": "string",
         "percentage": 0,
         "color": "string"
+      }
+    ],
+    "collaborators": [
+      {
+        "login": "string",
+        "avatarUrl": "string",
+        "sharedRepos": 0,
+        "commits": 0,
+        "repos": [
+          {
+            "name": "string",
+            "owner": "string",
+            "url": "string",
+            "commits": 0,
+            "lastActivityAt": "ISO 8601"
+          }
+        ]
       }
     ]
   }

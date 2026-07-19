@@ -4,6 +4,7 @@ mod types;
 mod rate_limit;
 mod github;
 mod processor;
+mod collaborators;
 mod response;
 mod tests;
 
@@ -165,7 +166,7 @@ async fn handle_stats(req: Request, env: Env, ctx: worker::Context) -> Result<Re
         (10u32, 60u64)
     };
 
-    let gh = GitHubClient::new(token);
+    let gh = GitHubClient::new(token.clone());
     let gql = match gh.fetch(&user).await {
         Ok(r) => r,
         Err(e) => {
@@ -214,7 +215,14 @@ async fn handle_stats(req: Request, env: Env, ctx: worker::Context) -> Result<Re
         &contributed,
     );
 
-    let stats = build_stats(
+    let collaborators = collaborators::fetch_collaborators(
+        &token,
+        user.as_str(),
+        &processed.involved_repos,
+        is_portfolio_request,
+    ).await;
+
+    let mut stats = build_stats(
         gql_user,
         user.as_str(),
         processed.repo_count,
@@ -223,6 +231,7 @@ async fn handle_stats(req: Request, env: Env, ctx: worker::Context) -> Result<Re
         processed.most_starred_repo,
         processed.involved_repos,
     );
+    stats.collaborators = collaborators;
 
     let resp = success(stats.clone(), remaining, reset, false)?;
 

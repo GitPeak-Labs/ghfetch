@@ -39,6 +39,7 @@ pub fn process_repos(
             stars: r.stargazer_count,
             primary_language: primary_lang,
             is_owned,
+            is_private: r.is_private,
         };
 
         involved_map
@@ -208,5 +209,6 @@ pub fn build_stats(
         bio: user.bio.unwrap_or_default(),
         languages,
         involved_repos,
+        collaborators: Vec::new(),
     }
 }

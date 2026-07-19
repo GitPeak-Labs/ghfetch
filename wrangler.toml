@@ -7,5 +7,5 @@ binding = "RATE_LIMIT_KV"
 id = "f5068426dcbd42d8a907da7dbcd2b289"
 
 [build]
-command = "cargo install worker-build && worker-build --release"
+command = "cargo install worker-build && worker-build --release --no-panic-recovery"
 cwd = "."

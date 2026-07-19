@@ -26,6 +26,8 @@ pub struct GitHubStats {
     pub bio: String,
     #[serde(default)]
     pub involved_repos: Vec<InvolvedRepo>,
+    #[serde(default)]
+    pub collaborators: Vec<Collaborator>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -46,4 +48,28 @@ pub struct InvolvedRepo {
     pub stars: u32,
     pub primary_language: Option<String>,
     pub is_owned: bool,
+    #[serde(default)]
+    pub is_private: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Collaborator {
+    pub login: String,
+    pub avatar_url: String,
+    pub shared_repos: u32,
+    pub commits: u32,
+    #[serde(default)]
+    pub repos: Vec<CollabRepo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CollabRepo {
+    pub name: String,
+    pub owner: String,
+    pub url: String,
+    pub commits: u32,
+    #[serde(default)]
+    pub last_activity_at: String,
 }
