@@ -50,6 +50,8 @@ pub struct InvolvedRepo {
     pub is_owned: bool,
     #[serde(default)]
     pub is_private: bool,
+    #[serde(default)]
+    pub is_fork: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]

@@ -93,6 +93,7 @@ mod processor_tests {
             },
             pushed_at: Some("2026-04-09T00:00:00Z".to_string()),
             is_private: false,
+            is_fork: false,
         }
     }
 

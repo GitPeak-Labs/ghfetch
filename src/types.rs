@@ -139,6 +139,8 @@ pub struct Repo {
     pub pushed_at: Option<String>,
     #[serde(rename = "isPrivate")]
     pub is_private: bool,
+    #[serde(rename = "isFork", default)]
+    pub is_fork: bool,
 }
 
 #[derive(Deserialize, Clone)]

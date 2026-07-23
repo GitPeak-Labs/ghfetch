@@ -40,6 +40,7 @@ pub fn process_repos(
             primary_language: primary_lang,
             is_owned,
             is_private: r.is_private,
+            is_fork: r.is_fork,
         };
 
         involved_map

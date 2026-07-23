@@ -107,13 +107,20 @@ fn aggregate(target_user: &str, repos: Vec<RepoRef>, per_repo: Vec<Vec<Contribut
     list
 }
 
+fn is_eligible(r: &InvolvedRepo, allow_private: bool) -> bool {
+    (!r.is_private || allow_private) && !r.is_fork
+}
+
 pub async fn fetch_collaborators(
     token: &str,
     target_user: &str,
     repos: &[InvolvedRepo],
     allow_private: bool,
 ) -> Vec<Collaborator> {
-    let eligible: Vec<&InvolvedRepo> = repos.iter().filter(|r| !r.is_private || allow_private).collect();
+    let eligible: Vec<&InvolvedRepo> = repos
+        .iter()
+        .filter(|r| is_eligible(r, allow_private))
+        .collect();
 
     let futs = eligible
         .iter()
@@ -215,5 +222,33 @@ mod tests {
             .collect();
         let result = aggregate("target", repos, vec![entries]);
         assert_eq!(result.len(), MAX_COLLABORATORS);
+    }
+
+    fn involved_repo(name: &str, is_private: bool, is_fork: bool) -> InvolvedRepo {
+        InvolvedRepo {
+            name: name.to_string(),
+            owner: "owner".to_string(),
+            url: format!("https://github.com/owner/{name}"),
+            last_contributed_at: "2026-01-01T00:00:00Z".to_string(),
+            stars: 0,
+            primary_language: None,
+            is_owned: true,
+            is_private,
+            is_fork,
+        }
+    }
+
+    #[test]
+    fn excludes_forks_regardless_of_privacy() {
+        assert!(!is_eligible(&involved_repo("fork-public", false, true), false));
+        assert!(!is_eligible(&involved_repo("fork-public", false, true), true));
+        assert!(!is_eligible(&involved_repo("fork-private", true, true), true));
+    }
+
+    #[test]
+    fn includes_non_fork_respecting_privacy() {
+        assert!(is_eligible(&involved_repo("normal", false, false), false));
+        assert!(!is_eligible(&involved_repo("normal-private", true, false), false));
+        assert!(is_eligible(&involved_repo("normal-private", true, false), true));
     }
 }

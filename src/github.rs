@@ -15,7 +15,7 @@ query($u: String!) {
       totalIssueContributions
       commitContributionsByRepository(maxRepositories: 100) {
         repository {
-          name stargazerCount url pushedAt isPrivate
+          name stargazerCount url pushedAt isPrivate isFork
           owner { login }
           languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
             edges { size node { name } }
@@ -34,7 +34,7 @@ query($u: String!) {
         orderBy: {field: PUSHED_AT, direction: DESC},
         privacy: PRIVATE) {
       nodes {
-        name stargazerCount url pushedAt isPrivate
+        name stargazerCount url pushedAt isPrivate isFork
         owner { login }
         languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name } }
@@ -47,7 +47,7 @@ query($u: String!) {
         ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER],
         privacy: PUBLIC) {
       nodes {
-        name stargazerCount url pushedAt isPrivate
+        name stargazerCount url pushedAt isPrivate isFork
         owner { login }
         languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name } }
