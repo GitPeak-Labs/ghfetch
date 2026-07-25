@@ -1,8 +1,9 @@
-use crate::types::{GqlResp, Username};
-use worker::{Headers, Method, Request, RequestInit};
+import { gqlResponseSchema, type GqlResponse } from "./graphqlResponse"
+import type { Username } from "./username"
 
-const API_URL: &str = "https://api.github.com/graphql";
-const QUERY: &str = "
+const API_URL = "https://api.github.com/graphql"
+
+const QUERY = `
 query($u: String!) {
   user(login: $u) {
     avatarUrl name bio createdAt
@@ -55,41 +56,48 @@ query($u: String!) {
       }
     }
   }
-}";
+}`
 
-pub struct GitHubClient {
-    token: String,
-}
+export type GitHubFetchError =
+  | { kind: "auth" }
+  | { kind: "rateLimit" }
+  | { kind: "http"; status: number }
 
-impl GitHubClient {
-    pub fn new(token: String) -> Self {
-        Self { token }
+export type GitHubFetchOutcome =
+  | { ok: true; response: GqlResponse }
+  | { ok: false; error: GitHubFetchError }
+
+export class GitHubClient {
+  constructor(private readonly token: string) {}
+
+  async fetch(user: Username): Promise<GitHubFetchOutcome> {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "User-Agent": "portfolio-worker/1.0",
+      },
+      body: JSON.stringify({ query: QUERY, variables: { u: user } }),
+    })
+
+    if (response.status === 401)
+      return { ok: false, error: { kind: "auth" } }
+
+    if (response.status === 403)
+      return { ok: false, error: { kind: "rateLimit" } }
+
+    if (response.status !== 200)
+      return { ok: false, error: { kind: "http", status: response.status } }
+
+    const json = await response.json()
+    const parsed = gqlResponseSchema.safeParse(json)
+
+    if (!parsed.success) {
+      console.error("GitHub GraphQL response failed validation", parsed.error)
+      return { ok: false, error: { kind: "http", status: response.status } }
     }
 
-    pub async fn fetch(&self, user: &Username) -> Result<GqlResp, worker::Error> {
-        let body = serde_json::json!({
-            "query": QUERY,
-            "variables": { "u": user.as_str() }
-        });
-
-        let mut init = RequestInit::new();
-        init.with_method(Method::Post)
-            .with_body(Some(body.to_string().into()));
-
-        let h = Headers::new();
-        h.set("Authorization", &format!("Bearer {}", self.token))?;
-        h.set("Content-Type", "application/json")?;
-        h.set("User-Agent", "portfolio-worker/1.0")?;
-        init.with_headers(h);
-
-        let req = Request::new_with_init(API_URL, &init)?;
-        let mut resp = worker::Fetch::Request(req).send().await?;
-
-        match resp.status_code() {
-            200 => resp.json().await,
-            401 => Err(worker::Error::RustError("GitHub auth failed".into())),
-            403 => Err(worker::Error::RustError("GitHub rate limit".into())),
-            s => Err(worker::Error::RustError(format!("GitHub error: {}", s))),
-        }
-    }
+    return { ok: true, response: parsed.data }
+  }
 }

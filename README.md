@@ -1,7 +1,7 @@
 # ghfetch
 ![CI](https://github.com/AmaneKai/ghfetch/actions/workflows/ci-cd.yml/badge.svg?branch=master)
 
-A GitHub stats API built with Rust on Cloudflare Workers. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
+A GitHub stats API built with TypeScript on Cloudflare Workers. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
 
 ## Features
 
@@ -103,7 +103,7 @@ Exceeding limits returns `429 Too Many Requests` with `X-RateLimit-Remaining` an
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs)
+- [Bun](https://bun.sh)
 - [wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
 - A Cloudflare account
 - A GitHub personal access token with `read:user` and `repo` scopes
@@ -117,7 +117,13 @@ git clone https://github.com/AmaneKai/ghfetch
 cd ghfetch
 ```
 
-2. Create a KV namespace
+2. Install dependencies
+
+```bash
+bun install
+```
+
+3. Create a KV namespace
 
 ```bash
 wrangler kv namespace create RATE_LIMIT_KV
@@ -131,19 +137,19 @@ binding = "RATE_LIMIT_KV"
 id = "your-kv-namespace-id"
 ```
 
-3. Set your GitHub token
+4. Set your GitHub token
 
 ```bash
 wrangler secret put GITHUB_TOKEN
 ```
 
-4. Deploy
+5. Deploy
 
 ```bash
 wrangler deploy
 ```
 
-5. Test
+6. Test
 
 ```bash
 curl "https://<your-worker>.workers.dev/v1/stats?username=<github-username>"
@@ -153,16 +159,23 @@ curl "https://<your-worker>.workers.dev/v1/stats?username=<github-username>"
 
 ```bash
 # Run tests
-cargo test
+bun test
+
+# Typecheck
+bun run typecheck
+
+# Lint
+bun run lint
 
 # Local dev server (uses remote KV bindings)
-wrangler dev --remote
+bun run dev
 ```
 
 ## Stack
 
-- Rust
-- Cloudflare Workers (`worker-rs`)
+- TypeScript
+- [Hono](https://hono.dev)
+- Cloudflare Workers
 - Cloudflare KV
 - GitHub GraphQL API v4
 
