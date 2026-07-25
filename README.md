@@ -14,11 +14,11 @@ A GitHub stats API built with TypeScript on Cloudflare Workers. Returns aggregat
 ## Live Instance
 
 ```
-https://ghfetch.carlosranara.workers.dev
+https://ghfetch.amanekai.workers.dev
 ```
 
 ```bash
-curl "https://ghfetch.carlosranara.workers.dev/v1/stats?username=torvalds"
+curl "https://ghfetch.amanekai.workers.dev/v1/stats?username=torvalds"
 ```
 
 ## Endpoints

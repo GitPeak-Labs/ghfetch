@@ -29,7 +29,7 @@ interface Variables {
 type AppEnv = { Bindings: Bindings; Variables: Variables }
 
 const CACHE_TTL_SECONDS = 300
-const VERSION = "1.0.0"
+const VERSION = "2.0.0"
 
 const app = new Hono<AppEnv>()
 
