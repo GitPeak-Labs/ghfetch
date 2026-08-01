@@ -2,6 +2,7 @@ import { z } from "zod"
 import type { CollabRepo, Collaborator, InvolvedRepo } from "../shared/githubStats"
 
 const MAX_COLLABORATORS = 10
+const CONTRIBUTORS_TIMEOUT_MS = 5000
 
 const contributorEntrySchema = z.object({
   login: z.string(),
@@ -28,6 +29,7 @@ async function fetchRepoContributors(
         "User-Agent": "ghfetch-worker/1.0",
         Accept: "application/vnd.github+json",
       },
+      signal: AbortSignal.timeout(CONTRIBUTORS_TIMEOUT_MS),
     })
   } catch (error) {
     console.error(`Failed to fetch contributors for ${owner}/${name}`, error)

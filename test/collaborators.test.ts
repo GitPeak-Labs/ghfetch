@@ -1,6 +1,21 @@
 import { describe, expect, test } from "bun:test"
-import { aggregate, isEligible } from "../src/domain/collaborators"
+import { aggregate, fetchCollaborators, isEligible } from "../src/domain/collaborators"
 import type { InvolvedRepo } from "../src/shared/githubStats"
+import { installFetchMock, jsonResponse } from "./support/fetchMock"
+
+function involvedRepo(name: string, isPrivate: boolean, isFork: boolean): InvolvedRepo {
+  return {
+    name,
+    owner: "owner",
+    url: `https://github.com/owner/${name}`,
+    lastContributedAt: "2026-01-01T00:00:00Z",
+    stars: 0,
+    primaryLanguage: null,
+    isOwned: true,
+    isPrivate,
+    isFork,
+  }
+}
 
 function entry(login: string, contributions: number, accountType: string) {
   return {
@@ -72,20 +87,6 @@ describe("aggregate", () => {
 })
 
 describe("isEligible", () => {
-  function involvedRepo(name: string, isPrivate: boolean, isFork: boolean): InvolvedRepo {
-    return {
-      name,
-      owner: "owner",
-      url: `https://github.com/owner/${name}`,
-      lastContributedAt: "2026-01-01T00:00:00Z",
-      stars: 0,
-      primaryLanguage: null,
-      isOwned: true,
-      isPrivate,
-      isFork,
-    }
-  }
-
   test("excludes forks regardless of privacy", () => {
     expect(isEligible(involvedRepo("fork-public", false, true), false)).toBe(false)
     expect(isEligible(involvedRepo("fork-public", false, true), true)).toBe(false)
@@ -96,5 +97,53 @@ describe("isEligible", () => {
     expect(isEligible(involvedRepo("normal", false, false), false)).toBe(true)
     expect(isEligible(involvedRepo("normal-private", true, false), false)).toBe(false)
     expect(isEligible(involvedRepo("normal-private", true, false), true)).toBe(true)
+  })
+})
+
+describe("fetchCollaborators", () => {
+  test("bounds each contributors request with an abort signal", async () => {
+    let capturedSignal: AbortSignal | undefined
+
+    installFetchMock((_url, init) => {
+      capturedSignal = init?.signal as AbortSignal | undefined
+      return jsonResponse([])
+    })
+
+    await fetchCollaborators("token", "target", [involvedRepo("r1", false, false)], false)
+
+    expect(capturedSignal).toBeInstanceOf(AbortSignal)
+  })
+
+  test("treats a hung/timed-out contributors request as no contributors for that repo", async () => {
+    installFetchMock(() => {
+      throw new DOMException("The operation timed out.", "TimeoutError")
+    })
+
+    const result = await fetchCollaborators(
+      "token",
+      "target",
+      [involvedRepo("r1", false, false)],
+      false
+    )
+
+    expect(result).toEqual([])
+  })
+
+  test("a single slow repo doesn't block contributors found on the others", async () => {
+    installFetchMock((url) => {
+      if (url.includes("/owner/slow/")) throw new DOMException("Timed out", "TimeoutError")
+      return jsonResponse([{ login: "friend", avatar_url: "", contributions: 3, type: "User" }])
+    })
+
+    const result = await fetchCollaborators(
+      "token",
+      "target",
+      [involvedRepo("slow", false, false), involvedRepo("fast", false, false)],
+      false
+    )
+
+    expect(result.length).toBe(1)
+    expect(result[0]?.login).toBe("friend")
+    expect(result[0]?.sharedRepos).toBe(1)
   })
 })
