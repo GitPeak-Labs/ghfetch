@@ -1,7 +1,7 @@
 // CORS and security headers are applied globally by Hono middleware (see index.ts),
 // not per-response here.
 function withCommonHeaders(headers: Headers): void {
-  headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60")
+  headers.set("Cache-Control", "public, max-age=900, stale-while-revalidate=120")
   headers.set("Vary", "Accept-Encoding")
   headers.set("Content-Type", "application/json")
 }
@@ -18,15 +18,11 @@ function json(data: unknown, status: number, extraHeaders?: Record<string, strin
 }
 
 export function success<T>(data: T, remaining: number, reset: number, cached: boolean): Response {
-  return json(
-    { ok: true, data },
-    200,
-    {
-      "X-RateLimit-Remaining": String(remaining),
-      "X-RateLimit-Reset": String(reset),
-      "X-Cache": cached ? "HIT" : "MISS",
-    }
-  )
+  return json({ ok: true, data }, 200, {
+    "X-RateLimit-Remaining": String(remaining),
+    "X-RateLimit-Reset": String(reset),
+    "X-Cache": cached ? "HIT" : "MISS",
+  })
 }
 
 export function err(

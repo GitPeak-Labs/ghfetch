@@ -14,11 +14,11 @@ query($u: String!) {
       totalCommitContributions
       totalPullRequestContributions
       totalIssueContributions
-      commitContributionsByRepository(maxRepositories: 100) {
+      commitContributionsByRepository(maxRepositories: 50) {
         repository {
           name stargazerCount url pushedAt isPrivate isFork
           owner { login }
-          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+          languages(first: 8, orderBy: {field: SIZE, direction: DESC}) {
             edges { size node { name } }
           }
         }
@@ -30,27 +30,27 @@ query($u: String!) {
       }
     }
     repositories(
-        first: 100,
+        first: 50,
         ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER],
         orderBy: {field: PUSHED_AT, direction: DESC},
         privacy: PRIVATE) {
       nodes {
         name stargazerCount url pushedAt isPrivate isFork
         owner { login }
-        languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+        languages(first: 8, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name } }
         }
       }
     }
     publicRepositories: repositories(
-        first: 100,
+        first: 50,
         orderBy: {field: PUSHED_AT, direction: DESC},
         ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER],
         privacy: PUBLIC) {
       nodes {
         name stargazerCount url pushedAt isPrivate isFork
         owner { login }
-        languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+        languages(first: 8, orderBy: {field: SIZE, direction: DESC}) {
           edges { size node { name } }
         }
       }
@@ -59,13 +59,10 @@ query($u: String!) {
 }`
 
 export type GitHubFetchError =
-  | { kind: "auth" }
-  | { kind: "rateLimit" }
-  | { kind: "http"; status: number }
+  { kind: "auth" } | { kind: "rateLimit" } | { kind: "http"; status: number }
 
 export type GitHubFetchOutcome =
-  | { ok: true; response: GqlResponse }
-  | { ok: false; error: GitHubFetchError }
+  { ok: true; response: GqlResponse } | { ok: false; error: GitHubFetchError }
 
 export class GitHubClient {
   constructor(private readonly token: string) {}
@@ -81,11 +78,9 @@ export class GitHubClient {
       body: JSON.stringify({ query: QUERY, variables: { u: user } }),
     })
 
-    if (response.status === 401)
-      return { ok: false, error: { kind: "auth" } }
+    if (response.status === 401) return { ok: false, error: { kind: "auth" } }
 
-    if (response.status === 403)
-      return { ok: false, error: { kind: "rateLimit" } }
+    if (response.status === 403) return { ok: false, error: { kind: "rateLimit" } }
 
     if (response.status !== 200)
       return { ok: false, error: { kind: "http", status: response.status } }

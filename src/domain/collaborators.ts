@@ -123,7 +123,7 @@ export async function fetchCollaborators(
   repos: InvolvedRepo[],
   allowPrivate: boolean
 ): Promise<Collaborator[]> {
-  const eligible = repos.filter((repo) => isEligible(repo, allowPrivate))
+  const eligible = repos.filter((repo) => isEligible(repo, allowPrivate)).slice(0, 10)
 
   const perRepo = await Promise.all(
     eligible.map((repo) => fetchRepoContributors(token, repo.owner, repo.name))

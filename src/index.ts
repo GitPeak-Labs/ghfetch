@@ -28,7 +28,7 @@ interface Variables {
 
 type AppEnv = { Bindings: Bindings; Variables: Variables }
 
-const CACHE_TTL_SECONDS = 300
+const CACHE_TTL_SECONDS = 900
 const VERSION = "2.0.0"
 
 const app = new Hono<AppEnv>()
@@ -165,8 +165,7 @@ async function handleStats(c: Context<AppEnv>, user: Username): Promise<Response
 
   if (!fetchOutcome.ok) {
     console.log("GitHub error:", fetchOutcome.error)
-    if (fetchOutcome.error.kind === "rateLimit")
-      return err(503, "GitHub API rate limit exceeded")
+    if (fetchOutcome.error.kind === "rateLimit") return err(503, "GitHub API rate limit exceeded")
     return err(502, "Failed to fetch data from GitHub")
   }
 
@@ -183,12 +182,7 @@ async function handleStats(c: Context<AppEnv>, user: Username): Promise<Response
         return [entry.repository, occurredAt]
       })
 
-  const processed = processRepos(
-    user,
-    privateRepos,
-    gqlUser.publicRepositories.nodes,
-    contributed
-  )
+  const processed = processRepos(user, privateRepos, gqlUser.publicRepositories.nodes, contributed)
 
   const collaborators = await fetchCollaborators(
     token,
