@@ -2,15 +2,15 @@
 
 ![CI](https://github.com/AmaneKai/ghfetch/actions/workflows/ci-cd.yml/badge.svg?branch=master)
 
-A GitHub stats API built with TypeScript on Cloudflare Workers. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
+A GitHub stats API built with Rust on Cloudflare Workers. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
 
 ## Features
 
 - Aggregates owned, collaborated, and contributed repositories
 - Surfaces top collaborators (shared repos + commit counts) via the GitHub REST contributors API
 - Per-IP and global rate limiting backed by Cloudflare KV
-- Response caching with 5-minute TTL to protect GitHub token limits
-- Runs at the edge with sub-10ms cached response times
+- Response caching with a 15-minute TTL to protect GitHub token limits
+- Runs at the edge, compiled to a ~500 KB WASM module
 
 ## Live Instance
 
@@ -56,8 +56,20 @@ curl "https://ghfetch.amanekai.workers.dev/v1/stats?username=torvalds"
     "languages": [
       {
         "name": "string",
-        "percentage": 0,
-        "color": "string"
+        "percentage": 0
+      }
+    ],
+    "involvedRepos": [
+      {
+        "name": "string",
+        "owner": "string",
+        "url": "string",
+        "lastContributedAt": "ISO 8601",
+        "stars": 0,
+        "primaryLanguage": "string | null",
+        "isOwned": true,
+        "isPrivate": false,
+        "isFork": false
       }
     ],
     "collaborators": [
@@ -89,6 +101,15 @@ On error:
   "error": "string"
 }
 ```
+
+| Status | Meaning                                                     |
+| ------ | ----------------------------------------------------------- |
+| `400`  | Invalid or missing username                                 |
+| `404`  | Unknown route, or GitHub has no such user                   |
+| `429`  | Rate limited (see below)                                    |
+| `500`  | The Worker is missing its `GITHUB_TOKEN` secret             |
+| `502`  | GitHub failed, rejected the token, or sent an unusable body |
+| `503`  | GitHub's own API rate limit was hit                         |
 
 ## How Stats Are Calculated
 
@@ -125,9 +146,12 @@ where $N$ is the number of repos with language data, and $share_{i,r} = 0$ for a
 
 Languages that round down to 0% are dropped from the response.
 
+**Involved repos.** The 15 repos you most recently pushed to or committed to, newest first.
+
 **Collaborators.** Pulled from GitHub's REST contributors endpoint on up to 10 of your most
 recently active, non-fork repos. Bot accounts and you yourself are excluded, and the list is
-ranked by shared-repo count, then total commits.
+ranked by shared-repo count, then total commits. Each contributors request has a 5 second
+timeout; a repo that fails or times out simply contributes no collaborators.
 
 ## Rate Limiting
 
@@ -138,13 +162,18 @@ ranked by shared-repo count, then total commits.
 | Global username limit | 60 unique usernames/min |
 | Block duration        | 5 min                   |
 
-Exceeding limits returns `429 Too Many Requests` with `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers.
+Requests answered from the cache don't count against these limits. Exceeding a limit returns
+`429 Too Many Requests` with `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers.
+
+Counters live in Workers KV, which is eventually consistent and has no atomic increment, so the
+limits are approximate under concurrent bursts.
 
 ## Deploy Your Own
 
 ### Prerequisites
 
-- [Bun](https://bun.sh)
+- [Rust](https://rustup.rs) with the WASM target: `rustup target add wasm32-unknown-unknown`
+- [worker-build](https://crates.io/crates/worker-build): `cargo install worker-build`
 - [wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
 - A Cloudflare account
 - A GitHub personal access token with `read:user` and `repo` scopes
@@ -158,13 +187,7 @@ git clone https://github.com/AmaneKai/ghfetch
 cd ghfetch
 ```
 
-2. Install dependencies
-
-```bash
-bun install
-```
-
-3. Create a KV namespace
+2. Create a KV namespace
 
 ```bash
 wrangler kv namespace create RATE_LIMIT_KV
@@ -178,46 +201,72 @@ binding = "RATE_LIMIT_KV"
 id = "your-kv-namespace-id"
 ```
 
-4. Set your GitHub token
+3. Set your GitHub token
 
 ```bash
 wrangler secret put GITHUB_TOKEN
 ```
 
-5. Deploy
+4. Deploy (Wrangler runs `worker-build` for you)
 
 ```bash
 wrangler deploy
 ```
 
-6. Test
+5. Test
 
 ```bash
 curl "https://<your-worker>.workers.dev/v1/stats?username=<github-username>"
 ```
 
+### Optional settings
+
+| Variable           | Default            | Description                                                                      |
+| ------------------ | ------------------ | -------------------------------------------------------------------------------- |
+| `PORTFOLIO_ORIGIN` | `carlosranara.com` | Requests whose `Origin` or `Referer` contains this also see private repositories |
+
+Set it under `[vars]` in `wrangler.toml`.
+
+### Continuous deployment
+
+Pushes to `master` deploy automatically through GitHub Actions. Add a `CLOUDFLARE_API_TOKEN`
+repository secret with permission to edit Workers.
+
 ## Development
 
 ```bash
-# Run tests
-bun test
+# Run the tests (logic runs natively; no WASM toolchain needed)
+cargo test
 
-# Typecheck
-bun run typecheck
+# Format and lint (CI enforces both)
+cargo fmt --all
+cargo clippy -p ghfetch-core --all-targets -- -D warnings
+cargo clippy -p ghfetch-worker --target wasm32-unknown-unknown -- -D warnings
 
-# Lint
-bun run lint
-
-# Local dev server (uses remote KV bindings)
-bun run dev
+# Run the Worker locally in workerd with a local KV
+echo 'GITHUB_TOKEN=ghp_...' > .dev.vars
+wrangler dev
 ```
+
+## Layout
+
+```
+crates/
+├── core/     all logic; no runtime dependencies, tested natively
+│   └── src/  service (request flow), stats, github (trait + parsing),
+│             rate_limit, store (KV trait), username, error
+└── worker/   Cloudflare entrypoint: routing, fetch, KV, CORS/security headers
+```
+
+`ghfetch-core` talks to GitHub and storage through two small traits, `GitHub` and `Store`. The
+Worker implements them with `fetch` and Workers KV; the tests implement them with in-memory fakes.
 
 ## Stack
 
-- TypeScript
-- [Hono](https://hono.dev)
-- Cloudflare Workers
-- Cloudflare KV
+- Rust, compiled to WASM
+- [workers-rs](https://github.com/cloudflare/workers-rs)
+- Cloudflare Workers and KV
+- [serde](https://serde.rs), [chrono](https://github.com/chronotope/chrono), [indexmap](https://github.com/indexmap-rs/indexmap), [thiserror](https://github.com/dtolnay/thiserror)
 - GitHub GraphQL API v4
 
 ## License

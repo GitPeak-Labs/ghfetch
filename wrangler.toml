@@ -1,6 +1,10 @@
 name = "ghfetch"
-main = "src/index.ts"
-compatibility_date = "2024-01-01"
+account_id = "766d0645670ca0990a1d74fa853c3ef0"
+main = "crates/worker/build/worker/shim.mjs"
+compatibility_date = "2025-01-01"
+
+[build]
+command = "cd crates/worker && worker-build --release"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"

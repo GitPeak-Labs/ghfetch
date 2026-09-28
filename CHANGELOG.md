@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.0] - 2026-09-28
+
+### Changed
+- Rewrote the API in Rust on Cloudflare Workers ([`workers-rs`](https://github.com/cloudflare/workers-rs)), replacing the TypeScript/Hono version. Endpoints, response shape, headers and rate-limit thresholds are unchanged. The Worker name, the `RATE_LIMIT_KV` namespace and the `GITHUB_TOKEN` secret are unchanged too, so a deploy replaces the existing Worker in place.
+- The repository is now a Cargo workspace. `ghfetch-core` holds all the logic behind small `GitHub` and `Store` traits and builds and tests natively; `ghfetch-worker` is the thin Workers entrypoint (routing, `fetch`, KV, CORS and security headers).
+- Bun, npm and the TypeScript toolchain are gone. CI runs `cargo fmt`, `cargo clippy` (native and `wasm32`) and `cargo test`, then deploys with Wrangler, which builds the Worker through `worker-build`.
+- The route-level test suite that mocked `fetch`, KV and the Cache API is replaced by tests against in-memory fakes of the `GitHub` and `Store` traits, covering the same scenarios and running natively in milliseconds. GitHub response parsing is tested directly.
+- Cached stats are served from KV; the separate Cache API tier in front of it was dropped.
+- GitHub GraphQL requests now time out after 20 seconds. Contributors requests keep their 5 second bound and are now actually cancelled with an `AbortController` instead of only being abandoned.
+
+### Fixed
+- Requesting a user that doesn't exist now returns `404` instead of `502`. GitHub answers with `{"data":{"user":null}}` and a `NOT_FOUND` error, which the old response schema rejected.
+- Repositories are now deduplicated by owner and name, as documented, instead of by name alone. Same-named repos under different owners were previously collapsed, undercounting `totalRepos` and `totalStars`.
+- A GitHub `429`, or a GraphQL `RATE_LIMITED` error, now maps to `503` like a `403` does.
+
 ## [2.0.0] - 2026-07-25
 
 ### Changed

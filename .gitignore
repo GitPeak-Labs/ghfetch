@@ -1,4 +1,5 @@
-node_modules/
-build/
+/target/
+/crates/worker/build/
 .wrangler/
+.dev.vars
 .DS_Store

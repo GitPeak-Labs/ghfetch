@@ -1,0 +1,21 @@
+[package]
+name = "ghfetch-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Platform-independent logic for the ghfetch GitHub stats API"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "std"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
+indexmap = "2.14.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true
