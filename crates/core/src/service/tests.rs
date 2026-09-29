@@ -235,7 +235,72 @@ async fn repeat_requests_are_served_from_cache_without_calling_github() {
     assert_eq!(second.reset, 60);
     assert_eq!(first.body, second.body);
     assert_eq!(github.user_calls.get(), 1);
-    assert_eq!(store.ttl("cache:v3:octocat:public"), Some(900));
+    assert!(!second.needs_refresh);
+    assert_eq!(
+        store.ttl("cache:v3:octocat:public"),
+        Some(CACHE_HARD_TTL_SECS)
+    );
+    assert_eq!(
+        store.ttl("cache:v3:octocat:public:meta"),
+        Some(CACHE_HARD_TTL_SECS)
+    );
+}
+
+#[tokio::test]
+async fn a_stale_hit_is_still_served_immediately_but_flagged_for_refresh() {
+    let github = FakeGitHub::new(&one_public_repo());
+    let store = MemoryStore::default();
+    let service = service(&github, &store, Limits::default());
+
+    service.stats(request("octocat")).await.unwrap();
+
+    let later = StatsRequest {
+        now_secs: NOW + CACHE_TTL_SECS,
+        ..request("octocat")
+    };
+    let reply = service.stats(later).await.unwrap();
+
+    assert_eq!(reply.cache, CacheStatus::Hit);
+    assert!(reply.needs_refresh);
+    assert_eq!(github.user_calls.get(), 1);
+}
+
+#[tokio::test]
+async fn only_one_stale_hit_claims_the_refresh() {
+    let github = FakeGitHub::new(&one_public_repo());
+    let store = MemoryStore::default();
+    let service = service(&github, &store, Limits::default());
+
+    service.stats(request("octocat")).await.unwrap();
+
+    let later = StatsRequest {
+        now_secs: NOW + CACHE_TTL_SECS,
+        ..request("octocat")
+    };
+    let first_stale = service.stats(later).await.unwrap();
+    let second_stale = service.stats(later).await.unwrap();
+
+    assert!(first_stale.needs_refresh);
+    assert!(!second_stale.needs_refresh);
+}
+
+#[tokio::test]
+async fn refresh_overwrites_the_cache_with_fresh_data() {
+    let github = FakeGitHub::new(&one_public_repo());
+    let store = MemoryStore::default();
+    let service = service(&github, &store, Limits::default());
+    let username: Username = "octocat".parse().unwrap();
+
+    service.stats(request("octocat")).await.unwrap();
+    service
+        .refresh(&username, Audience::Public, NOW + CACHE_TTL_SECS)
+        .await
+        .unwrap();
+
+    let reply = service.stats(request("octocat")).await.unwrap();
+    assert_eq!(reply.cache, CacheStatus::Hit);
+    assert!(!reply.needs_refresh);
+    assert_eq!(github.user_calls.get(), 2);
 }
 
 #[tokio::test]
@@ -504,11 +569,13 @@ fn classifies_the_audience_from_origin_and_referer() {
 async fn ignores_cache_entries_written_by_earlier_versions() {
     let github = FakeGitHub::new(&one_public_repo());
     let store = MemoryStore::default();
-    store.put(
-        "cache:octocat:public",
-        r#"{"totalRepos":1}"#.to_owned(),
-        900,
-    );
+    store
+        .put(
+            "cache:octocat:public",
+            r#"{"totalRepos":1}"#.to_owned(),
+            900,
+        )
+        .await;
     let service = service(&github, &store, Limits::default());
 
     let reply = service.stats(request("octocat")).await.unwrap();

@@ -56,9 +56,12 @@ impl<'a, S: Store> RateLimiter<'a, S> {
         let ip_count = parse_count(ip_raw);
         let username_count = parse_count(username_raw);
 
-        self.store.put(&ip_key, (ip_count + 1).to_string(), ttl);
-        self.store
-            .put(&username_key, (username_count + 1).to_string(), ttl);
+        join(
+            self.store.put(&ip_key, (ip_count + 1).to_string(), ttl),
+            self.store
+                .put(&username_key, (username_count + 1).to_string(), ttl),
+        )
+        .await;
 
         if ip_count >= self.limits.ip_per_window {
             return Verdict::IpLimited;
@@ -81,12 +84,13 @@ impl<'a, S: Store> RateLimiter<'a, S> {
         let count = parse_count(count_raw);
         if count >= max {
             self.store
-                .put(&block_key, "blocked".to_owned(), self.limits.block_secs);
+                .put(&block_key, "blocked".to_owned(), self.limits.block_secs)
+                .await;
             return Verdict::Blocked;
         }
 
         let new_count = count + 1;
-        self.store.put(&count_key, new_count.to_string(), ttl);
+        self.store.put(&count_key, new_count.to_string(), ttl).await;
 
         Verdict::Allowed {
             remaining: max - new_count,

@@ -5,7 +5,8 @@ mod store;
 use ghfetch_core::{
     error::ApiError,
     rate_limit::Limits,
-    service::{Service, StatsRequest},
+    service::{Service, StatsReply, StatsRequest},
+    username::Username,
 };
 use worker::{
     Context, Date, Env, Method, Request, Response, Result, Url, console_error, console_log, event,
@@ -72,32 +73,71 @@ async fn stats(req: &Request, env: &Env, ctx: &Context, url: &Url) -> Result<Res
         .get("CF-Connecting-IP")?
         .unwrap_or_else(|| "unknown".to_owned());
 
-    let github = WorkerGitHub::new(token);
-    let store = KvCache::new(env.kv("RATE_LIMIT_KV")?, ctx);
-    let service = Service {
-        github: &github,
-        store: &store,
-        portfolio_origin: &portfolio_origin,
-        limits: Limits::default(),
+    let github = WorkerGitHub::new(token.clone());
+    let store = KvCache::new(env.kv("RATE_LIMIT_KV")?);
+    let now_secs = Date::now().as_millis() / 1000;
+
+    let outcome = {
+        let service = Service {
+            github: &github,
+            store: &store,
+            portfolio_origin: &portfolio_origin,
+            limits: Limits::default(),
+        };
+
+        service
+            .stats(StatsRequest {
+                username: username.as_deref(),
+                origin: origin.as_deref(),
+                referer: referer.as_deref(),
+                client_ip: &client_ip,
+                now_secs,
+            })
+            .await
     };
 
-    let outcome = service
-        .stats(StatsRequest {
-            username: username.as_deref(),
-            origin: origin.as_deref(),
-            referer: referer.as_deref(),
-            client_ip: &client_ip,
-            now_secs: Date::now().as_millis() / 1000,
-        })
-        .await;
-
     match outcome {
-        Ok(reply) => http::stats(&reply),
+        Ok(reply) => {
+            if reply.needs_refresh {
+                spawn_refresh(ctx, token, store, portfolio_origin, &reply, now_secs);
+            }
+            http::stats(&reply)
+        }
         Err(error) => {
             log_failure(&error, &client_ip);
             http::error(&error)
         }
     }
+}
+
+fn spawn_refresh(
+    ctx: &Context,
+    token: String,
+    store: KvCache,
+    portfolio_origin: String,
+    reply: &StatsReply,
+    now_secs: u64,
+) {
+    let username = reply.username.clone();
+    let audience = reply.audience;
+
+    ctx.wait_until(async move {
+        let github = WorkerGitHub::new(token);
+        let service = Service {
+            github: &github,
+            store: &store,
+            portfolio_origin: &portfolio_origin,
+            limits: Limits::default(),
+        };
+
+        if let Err(error) = service.refresh(&username, audience, now_secs).await {
+            log_refresh_failure(&username, &error);
+        }
+    });
+}
+
+fn log_refresh_failure(username: &Username, error: &ApiError) {
+    console_error!("background refresh failed for {username}: {error}");
 }
 
 fn log_failure(error: &ApiError, client_ip: &str) {

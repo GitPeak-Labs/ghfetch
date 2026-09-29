@@ -2,7 +2,7 @@
 pub trait Store {
     async fn get(&self, key: &str) -> Option<String>;
 
-    fn put(&self, key: &str, value: String, ttl_secs: u64);
+    async fn put(&self, key: &str, value: String, ttl_secs: u64);
 }
 
 #[cfg(test)]

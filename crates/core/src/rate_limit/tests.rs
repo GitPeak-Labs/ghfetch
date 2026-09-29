@@ -152,11 +152,13 @@ async fn counters_keep_the_minimum_kv_ttl() {
 async fn unreadable_counters_count_as_zero() {
     let store = MemoryStore::default();
     let window_start = NOW / 60 * 60;
-    store.put(
-        &format!("rl:1.1.1.1:a:{window_start}"),
-        "garbage".to_owned(),
-        60,
-    );
+    store
+        .put(
+            &format!("rl:1.1.1.1:a:{window_start}"),
+            "garbage".to_owned(),
+            60,
+        )
+        .await;
     let limiter = RateLimiter::new(&store, limits(100, 100, 2));
 
     assert_eq!(

@@ -1,3 +1,4 @@
+use futures_util::future::join;
 use serde::Serialize;
 
 use crate::{
@@ -10,6 +11,8 @@ use crate::{
 };
 
 pub const CACHE_TTL_SECS: u64 = 900;
+const CACHE_HARD_TTL_SECS: u64 = 21_600;
+const REFRESH_LOCK_SECS: u64 = 60;
 const CACHED_REMAINING: u32 = 10;
 const CACHED_RESET_SECS: u64 = 60;
 const DEV_ORIGIN: &str = "localhost:5173";
@@ -79,6 +82,9 @@ pub struct StatsReply {
     pub cache: CacheStatus,
     pub remaining: u32,
     pub reset: u64,
+    pub needs_refresh: bool,
+    pub username: Username,
+    pub audience: Audience,
 }
 
 #[derive(Debug)]
@@ -104,14 +110,25 @@ impl<G: GitHub, S: Store> Service<'_, G, S> {
             .map_err(|_| ApiError::InvalidUsername)?;
 
         let audience = Audience::classify(request.origin, request.referer, self.portfolio_origin);
-        let cache_key = format!("cache:v3:{username}:{}", audience.cache_label());
+        let cache_key = Self::cache_key(&username, audience);
+        let meta_key = Self::meta_key(&cache_key);
 
-        if let Some(body) = self.store.get(&cache_key).await {
+        let (cached_body, cached_meta) =
+            join(self.store.get(&cache_key), self.store.get(&meta_key)).await;
+
+        if let Some(body) = cached_body {
+            let fetched_at = cached_meta.and_then(|raw| raw.parse().ok()).unwrap_or(0);
+            let stale = request.now_secs.saturating_sub(fetched_at) >= CACHE_TTL_SECS;
+            let needs_refresh = stale && self.claim_refresh(&cache_key).await;
+
             return Ok(StatsReply {
                 body,
                 cache: CacheStatus::Hit,
                 remaining: CACHED_REMAINING,
                 reset: CACHED_RESET_SECS,
+                needs_refresh,
+                username,
+                audience,
             });
         }
 
@@ -126,7 +143,39 @@ impl<G: GitHub, S: Store> Service<'_, G, S> {
             Verdict::Blocked => return Err(ApiError::Blocked),
         };
 
-        let stats = stats::load(self.github, &username, audience.includes_private())
+        let body = self
+            .fetch_and_store(&username, audience, request.now_secs)
+            .await?;
+
+        Ok(StatsReply {
+            body,
+            cache: CacheStatus::Miss,
+            remaining,
+            reset,
+            needs_refresh: false,
+            username,
+            audience,
+        })
+    }
+
+    pub async fn refresh(
+        &self,
+        username: &Username,
+        audience: Audience,
+        now_secs: u64,
+    ) -> Result<(), ApiError> {
+        self.fetch_and_store(username, audience, now_secs)
+            .await
+            .map(|_| ())
+    }
+
+    async fn fetch_and_store(
+        &self,
+        username: &Username,
+        audience: Audience,
+        now_secs: u64,
+    ) -> Result<String, ApiError> {
+        let stats = stats::load(self.github, username, audience.includes_private())
             .await?
             .ok_or(ApiError::UserNotFound)?;
 
@@ -135,14 +184,37 @@ impl<G: GitHub, S: Store> Service<'_, G, S> {
             data: &stats,
         })
         .map_err(|_| ApiError::Internal)?;
-        self.store.put(&cache_key, body.clone(), CACHE_TTL_SECS);
 
-        Ok(StatsReply {
-            body,
-            cache: CacheStatus::Miss,
-            remaining,
-            reset,
-        })
+        let cache_key = Self::cache_key(username, audience);
+        let meta_key = Self::meta_key(&cache_key);
+        join(
+            self.store
+                .put(&cache_key, body.clone(), CACHE_HARD_TTL_SECS),
+            self.store
+                .put(&meta_key, now_secs.to_string(), CACHE_HARD_TTL_SECS),
+        )
+        .await;
+
+        Ok(body)
+    }
+
+    async fn claim_refresh(&self, cache_key: &str) -> bool {
+        let lock_key = format!("{cache_key}:lock");
+        if self.store.get(&lock_key).await.is_some() {
+            return false;
+        }
+        self.store
+            .put(&lock_key, "1".to_owned(), REFRESH_LOCK_SECS)
+            .await;
+        true
+    }
+
+    fn cache_key(username: &Username, audience: Audience) -> String {
+        format!("cache:v3:{username}:{}", audience.cache_label())
+    }
+
+    fn meta_key(cache_key: &str) -> String {
+        format!("{cache_key}:meta")
     }
 }
 

@@ -25,9 +25,10 @@ impl Store for MemoryStore {
         std::future::ready(self.value(key))
     }
 
-    fn put(&self, key: &str, value: String, ttl_secs: u64) {
+    fn put(&self, key: &str, value: String, ttl_secs: u64) -> impl Future<Output = ()> {
         self.entries
             .borrow_mut()
             .insert(key.to_owned(), (value, ttl_secs));
+        std::future::ready(())
     }
 }
