@@ -2,18 +2,26 @@ name: CI/CD
 on:
   push:
     branches: [master]
+    paths-ignore: ["**.md", LICENSE]
   pull_request:
     branches: [master]
+    paths-ignore: ["**.md", LICENSE]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  WORKER_BUILD_VERSION: 0.8.1
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -21,6 +29,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy (core)
@@ -36,15 +46,29 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - name: Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Cache worker-build binary
+        id: worker-build-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/worker-build
+          key: worker-build-${{ runner.os }}-${{ env.WORKER_BUILD_VERSION }}
       - name: Install worker-build
-        run: cargo install worker-build --locked --version 0.8.1
+        if: steps.worker-build-cache.outputs.cache-hit != 'true'
+        run: cargo install worker-build --locked --version "$WORKER_BUILD_VERSION"
+        env:
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: 1
+          CARGO_PROFILE_RELEASE_LTO: "off"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+          CARGO_PROFILE_RELEASE_DEBUG: 0
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:

@@ -56,12 +56,12 @@ pub fn info(name: &str, version: &str) -> Result<Response> {
     let body = json!({
         "name": name,
         "version": version,
-        "description": "GitHub stats API built with Rust on Cloudflare Workers",
+        "description": "GitHub stats API",
         "endpoints": {
             "stats": "/v1/stats?username=<github-username>",
             "health": "/health",
         },
-        "source": "https://github.com/AmaneKai/ghfetch",
+        "source": "https://github.com/GitPeak-Labs/ghfetch",
     })
     .to_string();
 

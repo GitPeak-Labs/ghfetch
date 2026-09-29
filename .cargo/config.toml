@@ -1,0 +1,2 @@
+[alias]
+preflight = "run --quiet -p xtask --"

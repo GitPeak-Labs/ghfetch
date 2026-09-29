@@ -1,16 +1,16 @@
 # ghfetch
 
-![CI](https://github.com/AmaneKai/ghfetch/actions/workflows/ci-cd.yml/badge.svg?branch=master)
+![CI](https://github.com/GitPeak-Labs/ghfetch/actions/workflows/ci-cd.yml/badge.svg?branch=master)
 
-A GitHub stats API built with Rust on Cloudflare Workers. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
+A GitHub stats API. Returns aggregated repository and contribution data for any GitHub user via a single HTTP request.
 
 ## Features
 
 - Aggregates owned, collaborated, and contributed repositories
 - Surfaces top collaborators (shared repos + commit counts) via the GitHub REST contributors API
-- Per-IP and global rate limiting backed by Cloudflare KV
+- Per-IP and global rate limiting
 - Response caching with a 15-minute TTL to protect GitHub token limits
-- Runs at the edge, compiled to a ~500 KB WASM module
+- Cached responses are served in milliseconds
 
 ## Live Instance
 
@@ -107,7 +107,7 @@ On error:
 | `400`  | Invalid or missing username                                 |
 | `404`  | Unknown route, or GitHub has no such user                   |
 | `429`  | Rate limited (see below)                                    |
-| `500`  | The Worker is missing its `GITHUB_TOKEN` secret             |
+| `500`  | The server is missing its `GITHUB_TOKEN`                    |
 | `502`  | GitHub failed, rejected the token, or sent an unusable body |
 | `503`  | GitHub's own API rate limit was hit                         |
 
@@ -165,7 +165,7 @@ timeout; a repo that fails or times out simply contributes no collaborators.
 Requests answered from the cache don't count against these limits. Exceeding a limit returns
 `429 Too Many Requests` with `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers.
 
-Counters live in Workers KV, which is eventually consistent and has no atomic increment, so the
+Counters are kept in an eventually consistent key-value store with no atomic increment, so the
 limits are approximate under concurrent bursts.
 
 ## Deploy Your Own
@@ -183,7 +183,7 @@ limits are approximate under concurrent bursts.
 1. Clone the repo
 
 ```bash
-git clone https://github.com/AmaneKai/ghfetch
+git clone https://github.com/GitPeak-Labs/ghfetch
 cd ghfetch
 ```
 
